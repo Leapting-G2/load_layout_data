@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+
+<launch>
+
+    <rosparam file="$(find load_layout_data_node)/config/layout_data.yaml" command="load"/>
+    <node pkg="load_layout_data_node" name="load_layout_data_node" type="load_layout_data_node" respawn="false" output="screen">
+        <rosparam subst_value="true">
+            are_name: are_leapting
+            robot_pose_topic: /robot_pose
+            cleaner_path_topic: /cleaner_path
+            stop_trig_topic: /stop_trig
+            arm_trig_topic: /arm_up_down
+            arm_turn_topic: /arm_turn_pose
+            solar_add_height_topic: /solar_add_height
+            solar_add_height_topic_frameid: tag_pose_cleaner_grab
+            cleaner_mission_targrt_topic: /cleaner_target
+            cleaner_targrt_finish_topic: /target_finish
+            path_out_offset_begin: 2.0
+            path_out_offset_end: 3.5
+            cleaner_width: 0.6
+            brake_dis: 0.2
+            debug: true
+        </rosparam>
+    </node>
+
+    <arg name="load_layout_data_node_rviz" default="1" />
+    <group if="$(arg load_layout_data_node_rviz)">
+        <node launch-prefix="nice" pkg="rviz" type="rviz" name="load_layout_data_node_rviz" args="-d $(find load_layout_data_node)/rviz_config/load_layout_data_node.rviz" />
+    </group>
+
+	<node name="map_server" pkg="map_server" type="map_server" args="$(find load_layout_data_node)/map/map.yaml" output="screen">
+		<param name="frame_id" value="map"/>
+	</node>
+    <!-- rosrun map_server map_server map.yaml -->
+
+</launch>

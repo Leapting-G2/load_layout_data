@@ -1,0 +1,5 @@
+rostopic pub /cleaner_target std_msgs/Header "seq: 221
+stamp:
+  secs: 0
+  nsecs: 0
+frame_id: 'huzhou_block/A_3'" -1

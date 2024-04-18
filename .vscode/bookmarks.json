@@ -1,0 +1,19 @@
+{
+	"files": [
+		{
+			"path": "src/load_layout_data_node.cpp",
+			"bookmarks": [
+				{
+					"line": 879,
+					"column": 0,
+					"label": "target_trig_callback"
+				},
+				{
+					"line": 1393,
+					"column": 0,
+					"label": "robot_pose_subCallback"
+				}
+			]
+		}
+	]
+}
