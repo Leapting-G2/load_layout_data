@@ -4,12 +4,42 @@
 			"path": "src/load_layout_data_node.cpp",
 			"bookmarks": [
 				{
-					"line": 879,
+					"line": 147,
+					"column": 0,
+					"label": "map"
+				},
+				{
+					"line": 253,
+					"column": 0,
+					"label": "map_data"
+				},
+				{
+					"line": 608,
+					"column": 0,
+					"label": "a start"
+				},
+				{
+					"line": 917,
 					"column": 0,
 					"label": "target_trig_callback"
 				},
 				{
-					"line": 1393,
+					"line": 939,
+					"column": 0,
+					"label": "0_0"
+				},
+				{
+					"line": 1162,
+					"column": 0,
+					"label": "global_path"
+				},
+				{
+					"line": 1356,
+					"column": 0,
+					"label": "station path"
+				},
+				{
+					"line": 1478,
 					"column": 0,
 					"label": "robot_pose_subCallback"
 				}

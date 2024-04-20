@@ -23,7 +23,7 @@
         </rosparam>
     </node>
 
-    <arg name="load_layout_data_node_rviz" default="1" />
+    <arg name="load_layout_data_node_rviz" default="0" />
     <group if="$(arg load_layout_data_node_rviz)">
         <node launch-prefix="nice" pkg="rviz" type="rviz" name="load_layout_data_node_rviz" args="-d $(find load_layout_data_node)/rviz_config/load_layout_data_node.rviz" />
     </group>

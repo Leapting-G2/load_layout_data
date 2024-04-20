@@ -70,6 +70,8 @@ class Load_Layout_Data_Node {
     ros::Subscriber sub_target_finish_trig;
     ros::Publisher pub_stop_cloud;
     ros::Publisher pub_slow_trig;
+    
+    ros::Publisher pub_point;
 
   private:   
     void init_data();

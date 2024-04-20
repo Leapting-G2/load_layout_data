@@ -11,6 +11,10 @@
     "/opt/ros/noetic/lib/python3/dist-packages"
   ],
   "files.associations": {
+    "*.config": "editorconfig",
+    "*.pro": "yaml",
+    "*.txt": "yaml",
+    "*.inc": "yaml",
     "array": "cpp",
     "atomic": "cpp",
     "bit": "cpp",
@@ -62,6 +66,29 @@
     "stop_token": "cpp",
     "streambuf": "cpp",
     "thread": "cpp",
-    "typeinfo": "cpp"
+    "typeinfo": "cpp",
+    "csignal": "cpp",
+    "cstring": "cpp",
+    "strstream": "cpp",
+    "bitset": "cpp",
+    "codecvt": "cpp",
+    "complex": "cpp",
+    "condition_variable": "cpp",
+    "forward_list": "cpp",
+    "list": "cpp",
+    "set": "cpp",
+    "unordered_set": "cpp",
+    "optional": "cpp",
+    "hash_map": "cpp",
+    "hash_set": "cpp",
+    "future": "cpp",
+    "iomanip": "cpp",
+    "mutex": "cpp",
+    "shared_mutex": "cpp",
+    "sstream": "cpp",
+    "cfenv": "cpp",
+    "cinttypes": "cpp",
+    "typeindex": "cpp",
+    "variant": "cpp"
   }
 }

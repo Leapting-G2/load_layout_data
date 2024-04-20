@@ -3,3 +3,33 @@ stamp:
   secs: 0
   nsecs: 0
 frame_id: 'huzhou_block/A_3'" -1
+
+rostopic pub /cleaner_target std_msgs/Header "seq: 221
+stamp:
+  secs: 0
+  nsecs: 0
+frame_id: 'huzhou_block/0_0'" -1
+
+
+
+
+/are_leapting/are_to_map
+/are_leapting/block_list
+/are_leapting/node_list
+/are_leapting/station
+/huzhou_block/block_properties1
+/huzhou_block/block_size
+/huzhou_block/block_to_map
+/huzhou_block/path_offset_solar_x
+/huzhou_block/path_offset_solar_y
+/huzhou_block/solar_row_list
+/rosdistro
+/roslaunch/uris/host_lightzhu_precision_3470__37369
+/rosversion
+/run_id
+/wuhai_block/block_properties1
+/wuhai_block/block_size
+/wuhai_block/block_to_map
+/wuhai_block/path_offset_solar_x
+/wuhai_block/path_offset_solar_y
+/wuhai_block/solar_row_list
