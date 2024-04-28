@@ -23,14 +23,15 @@
         </rosparam>
     </node>
 
-    <arg name="load_layout_data_node_rviz" default="0" />
+    <arg name="load_layout_data_node_rviz" default="1" />
     <group if="$(arg load_layout_data_node_rviz)">
         <node launch-prefix="nice" pkg="rviz" type="rviz" name="load_layout_data_node_rviz" args="-d $(find load_layout_data_node)/rviz_config/load_layout_data_node.rviz" />
+        <node name="map_server" pkg="map_server" type="map_server" args="$(find load_layout_data_node)/map/map.yaml" output="screen">
+            <param name="frame_id" value="map"/>
+        </node>
+
     </group>
 
-	<node name="map_server" pkg="map_server" type="map_server" args="$(find load_layout_data_node)/map/map.yaml" output="screen">
-		<param name="frame_id" value="map"/>
-	</node>
     <!-- rosrun map_server map_server map.yaml -->
 
 </launch>

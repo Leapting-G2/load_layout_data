@@ -72,6 +72,9 @@ class Load_Layout_Data_Node {
     ros::Publisher pub_slow_trig;
     
     ros::Publisher pub_point;
+    ros::Publisher road_node_pub;
+    ros::Publisher pub_point_road_map;
+    ros::Publisher pub_point_LA;
 
   private:   
     void init_data();

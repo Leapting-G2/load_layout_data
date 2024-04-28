@@ -4,42 +4,47 @@
 			"path": "src/load_layout_data_node.cpp",
 			"bookmarks": [
 				{
-					"line": 147,
+					"line": 153,
 					"column": 0,
-					"label": "map"
+					"label": "node_list"
 				},
 				{
-					"line": 253,
-					"column": 0,
-					"label": "map_data"
-				},
-				{
-					"line": 608,
+					"line": 615,
 					"column": 0,
 					"label": "a start"
 				},
 				{
-					"line": 917,
+					"line": 933,
 					"column": 0,
 					"label": "target_trig_callback"
 				},
 				{
-					"line": 939,
+					"line": 955,
+					"column": 0,
+					"label": "!=0_0"
+				},
+				{
+					"line": 1053,
+					"column": 0,
+					"label": "end to start"
+				},
+				{
+					"line": 1108,
+					"column": 0,
+					"label": "start to end"
+				},
+				{
+					"line": 1195,
+					"column": 0,
+					"label": "全局路径"
+				},
+				{
+					"line": 1389,
 					"column": 0,
 					"label": "0_0"
 				},
 				{
-					"line": 1162,
-					"column": 0,
-					"label": "global_path"
-				},
-				{
-					"line": 1356,
-					"column": 0,
-					"label": "station path"
-				},
-				{
-					"line": 1478,
+					"line": 1520,
 					"column": 0,
 					"label": "robot_pose_subCallback"
 				}

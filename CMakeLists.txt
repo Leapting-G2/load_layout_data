@@ -154,8 +154,24 @@ include_directories(
 
 add_executable(load_layout_data_node  src/load_layout_data_node_main.cpp src/load_layout_data_node.cpp)
 target_link_libraries(load_layout_data_node ${catkin_LIBRARIES}  ${PCL_LIBRARIES} yaml-cpp)
-
 add_dependencies(load_layout_data_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+
+add_executable(global_path_node  src/global_path_node_main.cpp 
+                                 src/global_path_node.cpp)
+target_link_libraries(global_path_node 
+${catkin_LIBRARIES}  
+${PCL_LIBRARIES} 
+yaml-cpp)
+
+add_dependencies(global_path_node 
+${${PROJECT_NAME}_EXPORTED_TARGETS} 
+${catkin_EXPORTED_TARGETS})
+
+
+add_executable(robot_pose_remap  src/robot_pose_remap.cpp)
+target_link_libraries(robot_pose_remap ${catkin_LIBRARIES}  ${PCL_LIBRARIES} yaml-cpp)
+add_dependencies(robot_pose_remap ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

@@ -132,34 +132,40 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
     // nh_param.param<std::vector<double>>("layoutATmap_T", ext_T, std::vector<double>());
     // ROS_INFO_STREAM("are_name: " << are_name);
 
+    /*---------------------------------------debug---------------------------*/
+    pub_point = nh.advertise<sensor_msgs::PointCloud2>("/point_cloud", 10, true);
+    road_node_pub = nh.advertise<sensor_msgs::PointCloud2>("/road_node", 10, true);
+
+    /*---------------------------------------debug---------------------------*/
+
     std::string are_heard = "/" + are_name;  // are_leapting
     Eigen::Matrix4d are_to_map;
-    std::vector<double> v_are_to_map;
+    std::vector<double> v_are_to_map;                                                                     // 地图变换矩阵
     nh_param.param<std::vector<double>>(are_heard + "/are_to_map", v_are_to_map, std::vector<double>());  // 从参数服务器获取变换矩阵
     are_to_map = vec_matrix(v_are_to_map);
-    std::vector<double> station_param;
+    std::vector<double> station_param;                                                                  // 进出集装箱位置
     nh_param.param<std::vector<double>>(are_heard + "/station", station_param, std::vector<double>());  // 从参数服务器获取进出集装箱的位置
 
     XmlRpc::XmlRpcValue param_list_are;
 
     /**
-     * 根据rosparam参数，生成拓扑地图
+     * LA_1,LA_2,base_node
      */
-    if (nh_param.getParam(are_heard + "/node_list", param_list_are) == true) {
+    if (nh_param.getParam(are_heard + "/node_list", param_list_are) == true) {  // arm_leapting/node_list
         std::map<std::string, std::pair<double, double>> temp_map;
         for (int i = 0; i < param_list_are.size(); i++) {
-            std::string node_name = param_list_are[i]["node_name"];
-            std::pair<double, double> temp_pos(param_list_are[i]["param"][0], param_list_are[i]["param"][1]);
-            std::pair<std::string, std::pair<double, double>> temp_map_chip(node_name, temp_pos);
+            std::string node_name = param_list_are[i]["node_name"];                                            // LA_1,LA_2,base_node
+            std::pair<double, double> temp_pos(param_list_are[i]["param"][0], param_list_are[i]["param"][1]);  // x,y
+            std::pair<std::string, std::pair<double, double>> temp_map_chip(node_name, temp_pos);              // LA_1,(x,y)
             temp_map.insert(temp_map_chip);
         }
         /**
          * 查询相邻点，计算距离，并将连接关系放入到road_node_list中
          */
         for (int i = 0; i < (int)param_list_are.size(); i++) {
-            road_node road_node_chip;
+            road_node road_node_chip;  // 拓扑点
             std::string node_name = param_list_are[i]["node_name"];
-            road_node_chip.node_name = node_name;
+            road_node_chip.node_name = node_name;  // LA_1,LA_2,base_node
             Eigen::Vector4d temp_pose, result_pose;
             temp_pose[0] = param_list_are[i]["param"][0];
             temp_pose[1] = param_list_are[i]["param"][1];
@@ -185,12 +191,13 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
             //     }
             // }
 
-            /**
-             * 查询连接节点
-             */
+            /*查询连接点*/
             for (int k = 2; k < param_list_are[i]["param"].size(); k++) {
                 std::string connect_node_name = param_list_are[i]["param"][k];
+
+                std::cout << "node_name: " << node_name << std::endl;
                 std::cout << "connect_node_name " << connect_node_name << std::endl;
+
                 // 便利所有节点，找到连接节点
                 for (auto iter = temp_map.begin(); iter != temp_map.end(); iter++) {
                     if (iter->first == connect_node_name) {
@@ -198,7 +205,7 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
                         road_node_chip.lenght_list.push_back(pair_dis(road_node_chip.position, iter->second));         // 放入欧式距离
                         std::pair<std::string, std::string> segline_name_chip(iter->first, road_node_chip.node_name);  // 连接的线段
                         if (false == in_seglines(segline_names, segline_name_chip)) {
-                            segline_names.push_back(segline_name_chip);
+                            segline_names.push_back(segline_name_chip);  // 放入线段
                         }
                     }
                 }
@@ -211,7 +218,8 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
             }
             road_nodes.push_back(road_node_chip);
         }
-        // station_in, station_out
+        // road_node: "station_in<--->station_out<--->base_node<--->LA_1<--->LA_2"
+
         station_in.node_name = "station_in";
         std::pair<double, double> p_in(station_param[0], station_param[1]);
         std::pair<double, double> p_out(station_param[2], station_param[3]);
@@ -229,18 +237,28 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
 
         std::cout << "road_nodes.size() " << road_nodes.size() << std::endl;
         std::cout << "segline_names.size() " << segline_names.size() << std::endl;
-        for (int i = 0; i < segline_names.size(); i++) {
-            std::cout << "i " << i << std::endl;
-            std::cout << "segline_names[i].first " << segline_names[i].first << std::endl;
-            std::cout << "segline_names[i].second " << segline_names[i].second << std::endl;
-        }
-        for (int i = 0; i < road_nodes.size(); i++) {
-            std::cout << "i " << i << std::endl;
-            std::cout << "road_nodes[i].node_name " << road_nodes[i].node_name << std::endl;
-            for (int j = 0; j < road_nodes[i].connect_list.size(); j++) {
-                std::cout << "road_nodes[i].connect_list[j] " << road_nodes[i].connect_list[j] << std::endl;
+        if (debug) {
+            for (int i = 0; i < segline_names.size(); i++) {
+                std::cout << "i " << i << std::endl;
+                std::cout << "segline_names[i].first " << segline_names[i].first << std::endl;
+                std::cout << "segline_names[i].second " << segline_names[i].second << std::endl;
             }
+
+            pcl::PointCloud<pcl::PointXYZ> cloud;
+            for (int i = 0; i < road_nodes.size(); i++) {
+                std::cout << "i " << i << std::endl;
+                std::cout << "road_nodes[i].node_name " << road_nodes[i].node_name << std::endl;
+                for (int j = 0; j < road_nodes[i].connect_list.size(); j++) {
+                    std::cout << "road_nodes[i].connect_list[j] " << road_nodes[i].connect_list[j] << std::endl;
+                }
+                cloud.push_back(pcl::PointXYZ(road_nodes[i].position.first, road_nodes[i].position.second, 0));
+            }
+            sensor_msgs::PointCloud2 cloud_ros;
+            pcl::toROSMsg(cloud, cloud_ros);
+            cloud_ros.header.frame_id = "map";
+            road_node_pub.publish(cloud_ros);
         }
+
     } else {
         ROS_ERROR("Failed to get parameter from %s ", are_name.c_str());
     }
@@ -256,34 +274,15 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
             ROS_INFO_STREAM("block_name: " << block_name[m]);
             Eigen::Matrix4d block_to_map;
             std::string param_heard = "/" + block_name[m];
-            // nh_param.param<double>(param_heard + "/block_properties1", block_properties1, 0.0);
-            // nh_param.param<double>(param_heard + "/block_properties2", block_properties2, 0.0);
             std::vector<double> v_block_to_map;
             nh_param.param<std::vector<double>>(param_heard + "/block_to_map", v_block_to_map, std::vector<double>());
-            // Eigen::Vector3d eulerAngle(v_block_to_map[3], v_block_to_map[4], v_block_to_map[5]);
-            // Eigen::AngleAxisd rollAngle(Eigen::AngleAxisd(eulerAngle(0), Eigen::Vector3d::UnitX()));
-            // Eigen::AngleAxisd pitchAngle(Eigen::AngleAxisd(eulerAngle(1), Eigen::Vector3d::UnitY()));
-            // Eigen::AngleAxisd yawAngle(Eigen::AngleAxisd(eulerAngle(2), Eigen::Vector3d::UnitZ()));
-            // Eigen::Matrix3d rotation_matrix;
-            // rotation_matrix = yawAngle * pitchAngle * rollAngle;
-            // Eigen::Vector4d trans_tmp;
-            // trans_tmp << v_block_to_map[0], v_block_to_map[1], v_block_to_map[2], 1.0;
-            // block_to_map.setIdentity(4, 4);
-            // block_to_map.block<3, 3>(0, 0) = rotation_matrix;
-            // block_to_map.block<4, 1>(0, 3) = trans_tmp;
             block_to_map = vec_matrix(v_block_to_map);
             double path_offset_solar_x, path_offset_solar_y;
             nh_param.param<double>(param_heard + "/path_offset_solar_x", path_offset_solar_x, 0.0);
             nh_param.param<double>(param_heard + "/path_offset_solar_y", path_offset_solar_y, 0.0);
 
             XmlRpc::XmlRpcValue param_list;
-            // std::map<std::string, std::vector<Solar_Session>> map_data;
             if (nh_param.getParam(param_heard + "/solar_row_list", param_list) == true) {
-                // std::cout << "param_list.size() " << param_list.size() << std::endl;
-                // std::cout << "param_list[0][param].size() " << param_list[0]["param"].size() << std::endl;
-                // std::cout << "Test 1: " << param_list[0]["row_name"] << std::endl;
-                // std::cout << "Test 2: " << param_list[0]["param"] << std::endl;
-                // std::cout << "Test 3: " << param_list[0]["param"][0] << std::endl;
                 std::cout << "row_size: " << param_list.size() << std::endl;
 
                 for (int i = 0; i < param_list.size(); i++) {
@@ -333,17 +332,19 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
 
                 std::cout << "row_size: " << row_size << std::endl;
                 std::cout << "map_data.size(): " << map_data.size() << std::endl;
-
-                for (auto iter = map_data.begin(); iter != map_data.end(); iter++) {
-                    std::cout << iter->first << std::endl;
-                    for (int i = 0; i < iter->second.size(); i++) {
-                        std::cout << "Session: " << i + 1 << std::endl;
-                        std::cout << "row_start_point: " << iter->second[i].start_point.first << ", " << iter->second[i].start_point.second
-                                  << std::endl;
-                        std::cout << "row_end_point: " << iter->second[i].end_point.first << ", " << iter->second[i].end_point.second << std::endl;
-                        std::cout << "Session_height: " << iter->second[i].height << std::endl;
+                if (debug) {
+                    for (auto iter = map_data.begin(); iter != map_data.end(); iter++) {
+                        std::cout << iter->first << std::endl;
+                        for (int i = 0; i < iter->second.size(); i++) {
+                            std::cout << "Session: " << i + 1 << std::endl;
+                            std::cout << "row_start_point: " << iter->second[i].start_point.first << ", " << iter->second[i].start_point.second
+                                      << std::endl;
+                            std::cout << "row_end_point: " << iter->second[i].end_point.first << ", " << iter->second[i].end_point.second
+                                      << std::endl;
+                            std::cout << "Session_height: " << iter->second[i].height << std::endl;
+                        }
+                        std::cout << std::endl;
                     }
-                    std::cout << std::endl;
                 }
             } else {
                 ROS_ERROR("Failed to get parameter from %s ", block_name[m].c_str());
@@ -352,35 +353,38 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
     } else {
         ROS_ERROR("Failed to get block name list!!! ");
     }
-
-    float start_x, start_y, end_x, end_y;
-    std::vector<std::pair<float, float>> point_sec;
-    for (auto iter = map_data.begin(); iter != map_data.end(); iter++) {
-        for (int i = 0; i < iter->second.size(); i++) {
-            start_x = iter->second[i].start_point.first;
-            start_y = iter->second[i].start_point.second;
-            end_x = iter->second[i].end_point.first;
-            end_y = iter->second[i].end_point.second;
-            std::pair<float, float> start_point_sec(start_x, start_y);
-            std::pair<float, float> end_point_sec(end_x, end_y);
-            point_sec.push_back(start_point_sec);
-            point_sec.push_back(end_point_sec);
+    if (debug) {
+        float start_x, start_y, end_x, end_y;
+        std::vector<std::pair<float, float>> point_sec;
+        for (auto iter = map_data.begin(); iter != map_data.end(); iter++) {
+            for (int i = 0; i < iter->second.size(); i++) {
+                start_x = iter->second[i].start_point.first;
+                start_y = iter->second[i].start_point.second;
+                end_x = iter->second[i].end_point.first;
+                end_y = iter->second[i].end_point.second;
+                std::pair<float, float> start_point_sec(start_x, start_y);
+                std::pair<float, float> end_point_sec(end_x, end_y);
+                point_sec.push_back(start_point_sec);
+                point_sec.push_back(end_point_sec);
+            }
         }
-    }
-    // 发布点云
-    sensor_msgs::PointCloud2 pub_cloud2;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pub_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    for (auto iter = point_sec.begin(); iter != point_sec.end(); iter++) {
-        PointType pt;
-        pt.x = iter->first;
-        pt.y = iter->second;
-        pt.z = 0.0;
-        pub_cloud->push_back(pt);
-    }
 
-    pcl::toROSMsg(*pub_cloud, pub_cloud2);
-    pub_cloud2.header.frame_id = "map";
-    // pub_point.publish(pub_cloud2);
+        sensor_msgs::PointCloud2 pub_cloud2;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pub_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        for (auto iter = point_sec.begin(); iter != point_sec.end(); iter++) {
+            PointType pt;
+            pt.x = iter->first;
+            pt.y = iter->second;
+            pt.z = 0.0;
+            pub_cloud->push_back(pt);
+        }
+
+        pcl::toROSMsg(*pub_cloud, pub_cloud2);
+        pub_cloud2.header.frame_id = "map";
+        pub_point.publish(pub_cloud2);  // 发布map点云
+
+        // pub road_node point
+    }
 
     pub_stop_trig = nh.advertise<std_msgs::Header>(stop_trig_topic.c_str(), 10, true);
     pub_arm_trig = nh.advertise<std_msgs::Header>(arm_trig_topic.c_str(), 10, true);
@@ -390,10 +394,6 @@ Load_Layout_Data_Node::Load_Layout_Data_Node(ros::NodeHandle nh) {
     pub_stop_cloud = nh.advertise<sensor_msgs::PointCloud2>("/gap_point_cloud", 10);
     pub_slow_trig = nh.advertise<std_msgs::Header>("/slow_trig", 10);
     sub_robot_pose = nh.subscribe(robot_pose_topic.c_str(), 10, &Load_Layout_Data_Node::robot_pose_subCallback, this);
-    pub_point = nh.advertise<sensor_msgs::PointCloud2>("/point_cloud", 10, true);
-
-    pub_point.publish(pub_cloud2);
-    printf("pub_cloud2:size: %d\n", pub_cloud2.data.size());
 
     // hz5_timer = nh.createTimer(ros::Duration(0.2), &Load_Layout_Data_Node::Timer5hzCallback, this);
     // hz50_timer = nh.createTimer(ros::Duration(0.02), &Load_Layout_Data_Node::Timer50hzCallback, this);
@@ -541,6 +541,9 @@ struct Node {
     std::shared_ptr<Node> parent;
     Node(road_node _x) : x(_x), F(0), G(0), H(0), parent(NULL) {}
 };
+/**
+ * 计算从起始节点到目标节点的路径代价 G
+ */
 double calcG(const std::shared_ptr<Node> lastNode, const std::shared_ptr<Node> targetNode) {
     int index = -1;
     for (int i = 0; i < lastNode->x.connect_list.size(); i++) {
@@ -558,12 +561,21 @@ double calcG(const std::shared_ptr<Node> lastNode, const std::shared_ptr<Node> t
     double parentG = lastNode->parent == NULL ? 0 : lastNode->parent->G;  // first node
     return parentG + addG;
 }
+/**
+ * 计算启发式函数 H，即从当前节点到目标节点的估计代价
+ */
 double calcH(const std::shared_ptr<Node> theNode, const std::shared_ptr<Node> endNode) {
     return pair_dis(theNode->x.position, endNode->x.position);
 }
+/**
+ * 计算节点的综合代价 F，即路径代价 G 和启发式代价 H 的总和
+ */
 double calcF(const std::shared_ptr<Node> node) {
     return node->G + node->H;
 }
+/**
+ * 从给定节点列表中找到具有最小综合代价 F 的节点
+ */
 std::shared_ptr<Node> getLeastFnode(const std::list<std::shared_ptr<Node>>& inList) {
     if (!inList.empty()) {
         auto resNode = inList.front();
@@ -576,6 +588,9 @@ std::shared_ptr<Node> getLeastFnode(const std::list<std::shared_ptr<Node>>& inLi
     }
     return NULL;
 }
+/**
+ * 检查一个节点是否在给定的节点列表中
+ */
 bool isInList(const std::list<std::shared_ptr<Node>>& list, const std::shared_ptr<Node> node) {
     for (auto& p : list) {
         if (p->x.node_name == node->x.node_name) {
@@ -584,6 +599,9 @@ bool isInList(const std::list<std::shared_ptr<Node>>& list, const std::shared_pt
     }
     return false;
 }
+/**
+ * 获取给定节点的周围节点
+ */
 std::vector<std::shared_ptr<Node>> getSurroundNodes(const std::shared_ptr<Node> node) {
     std::vector<std::shared_ptr<Node>> surroundNodes;
     int num_s = node->x.connect_list.size();
@@ -704,6 +722,9 @@ double disPoint2Line(std::pair<double, double> a, std::pair<double, double> b, s
     return distance;
 }
 
+/**
+ * 获取直线方程
+ */
 void get_line(std::pair<double, double> p1, std::pair<double, double> p2, double& a, double& b, double& c) {
     if (fabs(p2.second - p1.second) < 0.001) {
         a = 0.0;
@@ -721,6 +742,9 @@ void get_line(std::pair<double, double> p1, std::pair<double, double> p2, double
 }
 
 // ax+by+c=0
+/**
+ * 计算两条直线交点
+ */
 bool getCrossPoint(PointType l1, PointType l2, std::pair<double, double>& crossPoint) {
     if (l1.y == l2.y && (fabs(l1.y) < 0.000001)) {
         return false;
@@ -745,6 +769,9 @@ bool getCrossPoint(PointType l1, PointType l2, std::pair<double, double>& crossP
 }
 
 // point s, line: ax+by+c = 0
+/**
+ * 计算点到直线的垂足
+ */
 std::pair<double, double> GetFootOfPerpendicular(std::pair<double, double> s, double a, double b, double c) {
     std::pair<double, double> retVal;
     if (fabs(b) < 0.000001) {
@@ -782,7 +809,7 @@ bool in_range(double a, double b, double c) {
     return in_r;
 }
 
-// pc between pa and pb
+// point a in line bc
 bool between_line(std::pair<double, double> pa, std::pair<double, double> pb, std::pair<double, double> pc) {
     // double a, b, c;
     // get_line(pa, pb, a, b, c);
@@ -923,7 +950,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
     path_out_offset_end_rand = path_out_offset_end + random_num;
 
     // target row name
-    target_name = msg->frame_id;
+    target_name = msg->frame_id;  // huzhou/A_3
     std::vector<std::string> results, results_number;
     results = splitString(target_name, "/");
     try {
@@ -942,7 +969,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
         if ((msg->seq % 10) == 0) {
             start_end = true;
             ROS_INFO("From start to end!");
-        } else {
+        } else {  // 221--》21
             start_end = false;
             ROS_INFO("From end to start!");
         }
@@ -959,10 +986,12 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
         if (block_row_size == 0) {
             ROS_ERROR("Maybe block_name ERROR! ");
             return;
+        } else {
+            printf("block_row size: %d\n", block_row_size);
         }
 
         std::vector<std::string> row_names;
-        int ten_number = msg->seq % 100;  // 221
+        int ten_number = msg->seq % 100;  // 221--》21
         if ((ten_number / 10) == 0) {     // default row_up mode
             ROS_INFO("From row up!");
             target_row_size = block_row_size - target_start_row_number + 1;  // 6-4=2
@@ -1004,34 +1033,36 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                 // huzhou/A_2
                 for (int i = 0; i < target_row_size; i++) {
                     row_name_chip = target_block_name + "/" + target_row_header + "_" + std::to_string(target_start_row_number - i);
-                    row_names.push_back(row_name_chip);
+                    row_names.push_back(row_name_chip);  // huzhou/A_3,huzhou/A_2
                 }
             }
         } else if ((ten_number / 10) == 3) {  // back to station
         } else {
         }
 
-        target_path.poses.clear();
+        target_path.poses.clear();  // 存放准备点，结束点
         global_path.poses.clear();
-        gap_actions.clear();
-        global_gap_actions.clear();
-        row_gap_actions.clear();
-        std::map<std::string, std::vector<Solar_Session>>::iterator iter;
+        gap_actions.clear();                                               // 动作
+        global_gap_actions.clear();                                        // 动作
+        row_gap_actions.clear();                                           // 每一排的动作
+        std::map<std::string, std::vector<Solar_Session>>::iterator iter;  // 光伏块
         bool flag_s_e = true;
         if (start_end == false) {  // false
             flag_s_e = false;
         }
 
         /**
-         * 生成清扫路径
-        */
+         * target_path
+         * row_gap_actions
+         */
+        // 遍历所有排
         for (int i = 0; i < target_row_size; i++) {                     // 2
             std::cout << "row_names[i] " << row_names[i] << std::endl;  // huzhou/A_3,huzhou/A_2
             iter = map_data.find(row_names[i]);
             if (iter != map_data.end()) {
                 std::pair<double, double> start_p_raw, end_p_raw, start_p, end_p;
-
-                if (flag_s_e == false) {                                            // end to start
+                // end to start
+                if (flag_s_e == false) {
                     start_p_raw = iter->second[iter->second.size() - 1].end_point;  // 最后一块板子的终点
                     end_p_raw = iter->second[0].start_point;                        // 第一块板子的起点
                     // 延长线(准备点)
@@ -1048,12 +1079,15 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                     row_gap_actions.push_back(gap_action_chip0);
                     // for gap detection
                     int j = 0;
+                    /**
+                     * 每一块抓放动作
+                     */
                     for (j = 0; j < iter->second.size(); j++) {  // 遍历所有sec
                         gap_action gap_action_chip1;
                         gap_action_chip1.gap_point =
                             extension_line(iter->second[iter->second.size() - 1 - j].end_point, iter->second[iter->second.size() - 1 - j].start_point,
-                                           cleaner_width - brake_dis, false);
-                        gap_action_chip1.up_down = 2;  // cleaner down
+                                           cleaner_width - brake_dis, false);  // 刹车距离
+                        gap_action_chip1.up_down = 2;                          // cleaner down
                         gap_action_chip1.solar_height = iter->second[iter->second.size() - 1 - j].height;
                         gap_action_chip1.done = false;
                         gap_action_chip1.arm_angle = -1.570796;
@@ -1068,6 +1102,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                         gap_action_chip2.arm_angle = -1.570796;
                         row_gap_actions.push_back(gap_action_chip2);
                     }
+                    // 结束点动作
                     gap_action gap_action_chip3;
                     gap_action_chip3.gap_point = end_p;
                     // if the last row, the last sec, the last chip
@@ -1082,7 +1117,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                     row_gap_actions.push_back(gap_action_chip3);
 
                     flag_s_e = true;
-                } else {  // flag_s_e = true start to end
+                } else {  // start to end
                     start_p_raw = iter->second[0].start_point;
                     end_p_raw = iter->second[iter->second.size() - 1].end_point;
                     start_p = extension_line(start_p_raw, end_p_raw, path_out_offset_begin_rand, true);
@@ -1159,25 +1194,28 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
 
         /**
          * 全局路径
-        */
+         */
         if (path_init) {
-            std::pair<road_node, road_node> turn_seg;
+            std::pair<road_node, road_node> turn_seg;  // 拓扑地图线段
             global_gap_actions.clear();
             /*查询距离清洗起点或终点最短的路径线*/
+            /*pose_start,pose_end*/
             if (false == find_seg(segline_names, road_nodes,
                                   std::pair<double, double>(target_path.poses[0].pose.position.x, target_path.poses[0].pose.position.y),
                                   std::pair<double, double>(target_path.poses[1].pose.position.x, target_path.poses[1].pose.position.y), turn_seg)) {
                 ROS_ERROR_STREAM("Can not find global segment line near this point: " << target_path.poses[0].pose.position);
                 return;
             }
-            std::cout << "turn_seg.first.node_name " << turn_seg.first.node_name << std::endl;//LA_2
-            std::cout << "turn_seg.second.node_name " << turn_seg.second.node_name << std::endl;//LA_1
+            std::cout << "turn_seg.first.node_name " << turn_seg.first.node_name << std::endl;    // LA_2
+            std::cout << "turn_seg.second.node_name " << turn_seg.second.node_name << std::endl;  // LA_1
             // 根据欧式距离查找最近线段的点
             road_node end_node = point_dis(turn_seg.first.position, base_node.position) > point_dis(turn_seg.second.position, base_node.position)
                                      ? turn_seg.first
-                                     : turn_seg.second;
+                                     : turn_seg.second;  // LA_1
             std::vector<road_node> global_node_list;
+            // station_in, station_out, base_node, LA_1
             if (find_path(station_in, end_node, global_node_list)) {
+                // 遍历所有路径
                 for (int i = 0; i < global_node_list.size() - 1; i++) {
                     geometry_msgs::PoseStamped g_pose_start, g_pose_end;
                     g_pose_start.pose.position.x = global_node_list[i].position.first;
@@ -1189,31 +1227,32 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                     double ang_roll, ang_pitch, ang_yaw;
                     get_angle(global_node_list[i].position, global_node_list[i + 1].position, ang_roll, ang_pitch, ang_yaw);
                     g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-                    global_path.poses.push_back(g_pose_start);
+                    global_path.poses.push_back(g_pose_start);  // station_in,station_out,base_node,LA_1
                     if (i == (global_node_list.size() - 2)) {
                         g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-                        global_path.poses.push_back(g_pose_end);
+                        global_path.poses.push_back(g_pose_end);  // LA_2
                     }
                 }
-                // for (int i = 0; i < global_node_list.size(); i++) {
-                //     std::cout << "i " << i << std::endl;
-                //     std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
-                // }
+                for (int i = 0; i < global_node_list.size(); i++) {
+                    std::cout << "i " << i << std::endl;
+                    std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
+                }
                 // station out, up arm
                 for (int i = 0; i < global_node_list.size(); i++) {
                     if (global_node_list[i].node_name == "station_out") {
-                        if (i > 0 && (global_node_list[i - 1].node_name == "station_in")) {
+                        if (i > 0 && (global_node_list[i - 1].node_name == "station_in")) {  // 上一个点为进库，则表明为出库状态
                             gap_action gap_action_chip1;
                             gap_action_chip1.gap_point = global_node_list[i].position;
-                            gap_action_chip1.up_down = 4;
+                            gap_action_chip1.up_down = 4;  // arm up
                             gap_action_chip1.solar_height = 0;
                             gap_action_chip1.done = false;
                             gap_action_chip1.arm_angle = -3.141592653;
                             global_gap_actions.push_back(gap_action_chip1);
-                        } else if ((i < (global_node_list.size() - 1)) && (global_node_list[i + 1].node_name == "station_in")) {
+                        } else if ((i < (global_node_list.size() - 1)) &&
+                                   (global_node_list[i + 1].node_name == "station_in")) {  // 下一个点为入库，则表明为出库状态
                             gap_action gap_action_chip1;
                             gap_action_chip1.gap_point = global_node_list[i].position;
-                            gap_action_chip1.up_down = 5;
+                            gap_action_chip1.up_down = 5;  // arm_down
                             gap_action_chip1.solar_height = 0;
                             gap_action_chip1.done = false;
                             gap_action_chip1.arm_angle = -3.141592653;
@@ -1231,7 +1270,6 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                 ROS_ERROR_STREAM("Can not find path to: " << end_node.node_name);
             }
         }
-
         if (path_init == false) {
             target_path.poses.clear();
             row_gap_actions.clear();
@@ -1243,10 +1281,13 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
             nav_msgs::Path path_combine;
             path_combine.header.stamp = ros::Time::now();
             path_combine.header.frame_id = "map";
-            int solar_path_size = target_path.poses.size();
+
+            int solar_path_size = target_path.poses.size();  // 4
             std::cout << "solar_path_size " << solar_path_size << std::endl;
-            int global_path_size = global_path.poses.size();
+
+            int global_path_size = global_path.poses.size();  // 5,station_in,station_out,base_node,LA_1,LA_2
             std::cout << "global_path_size " << global_path_size << std::endl;
+
             if (solar_path_size < 1) {
                 ROS_ERROR_STREAM("solar Path node number error: " << solar_path_size);
                 return;
@@ -1256,9 +1297,10 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                 return;
             }
             for (int i = 0; i < global_path_size - 1; i++) {
-                path_combine.poses.push_back(global_path.poses[i]);
+                path_combine.poses.push_back(global_path.poses[i]);  // station_in,station_out,base_node,LA_1
             }
             for (int i = 0; i < solar_path_size - 1; i++) {
+                // 添加交叉点
                 if (i == 0) {
                     std::pair<double, double> g1(global_path.poses[global_path_size - 1].pose.position.x,
                                                  global_path.poses[global_path_size - 1].pose.position.y);
@@ -1267,12 +1309,14 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                     std::pair<double, double> s1(target_path.poses[0].pose.position.x, target_path.poses[0].pose.position.y);
                     std::pair<double, double> s2(target_path.poses[1].pose.position.x, target_path.poses[1].pose.position.y);
                     double a, b, c;
-                    get_line(g1, g2, a, b, c);
+                    get_line(g1, g2, a, b, c);  // 直线方程
                     PointType l_g(a, b, c);
                     get_line(s1, s2, a, b, c);
                     PointType l_s(a, b, c);
-                    // std::cout << "l_g " << l_g  << std::endl;
-                    // std::cout << "l_s " << l_s  << std::endl;
+                    std::cout << "l_g " << l_g << std::endl;
+                    std::cout << "l_s " << l_s << std::endl;
+
+                    // 计算两直线交点
                     std::pair<double, double> cross_p;
                     if (getCrossPoint(l_g, l_s, cross_p)) {
                         if (point_dis(cross_p, s1) > 5.0) {
@@ -1292,7 +1336,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                         // cross point:lock arm; cross point+1m: turn arm
                         gap_action gap_action_chip1;
                         gap_action_chip1.gap_point = cross_p;
-                        gap_action_chip1.up_down = 3;
+                        gap_action_chip1.up_down = 3;  // arm lock
                         gap_action_chip1.solar_height = 0;
                         gap_action_chip1.done = false;
                         gap_action_chip1.arm_angle = -3.141592653;
@@ -1308,7 +1352,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                         return;
                     }
                 } else {
-                    if ((i % 2) != 0) {
+                    if ((i % 2) != 0) {  // 奇数
                         geometry_msgs::PoseStamped temp_pose_end;
                         temp_pose_end.pose.position.x = target_path.poses[i].pose.position.x;
                         temp_pose_end.pose.position.y = target_path.poses[i].pose.position.y;
@@ -1367,20 +1411,23 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
 
         std::pair<road_node, road_node> nearest_seg;
         //(线段，节点列表，当前点，最近线段起点与终点)
+
         // 查询最近的线段
         if (false ==
             find_seg(segline_names, road_nodes, std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), nearest_seg)) {
             ROS_ERROR_STREAM("Can not find global segment line near current robot pose: " << curr_robot_pose.position);
             return;
         }
-        // 查询距离充电站最近的节点
+        // 查询最近线段的起点和终点
         road_node back_start_node =
             point_dis(nearest_seg.first.position, station_in.position) > point_dis(nearest_seg.second.position, station_in.position)
                 ? nearest_seg.first
                 : nearest_seg.second;
         std::vector<road_node> back_node_list;
         back_path.poses.clear();
-        // 利用a start算法查询最短路径
+        /**
+         * 利用a start算法，查找距离station_in最近的节点
+         */
         if (find_path(back_start_node, station_in, back_node_list)) {
             for (int i = 0; i < back_node_list.size() - 1; i++) {
                 geometry_msgs::PoseStamped g_pose_start, g_pose_end;
@@ -1392,6 +1439,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                 g_pose_end.pose.position.z = 0.0;
                 double ang_roll, ang_pitch, ang_yaw;
                 // get_angle(back_node_list[i].position, back_node_list[i + 1].position, ang_roll, ang_pitch, ang_yaw);
+                // 获取角度
                 get_angle(back_node_list[i + 1].position, back_node_list[i].position, ang_roll, ang_pitch, ang_yaw);
                 g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
                 back_path.poses.push_back(g_pose_start);
@@ -1412,7 +1460,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
             back_path.poses[0].pose.position.x = cross_p.first;
             back_path.poses[0].pose.position.y = cross_p.second;
 
-            // station out, up arm
+            // 处理机械臂回库时的动作
             for (int i = 0; i < back_node_list.size(); i++) {
                 // start point
                 if (i == 0) {  // arm trun to 0
@@ -1424,6 +1472,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                     gap_action_chip.arm_angle = -3.141592653;
                     gap_actions.push_back(gap_action_chip);
                 }
+                // 到达station_out的点
                 if (back_node_list[i].node_name == "station_out") {
                     // station in
                     if (i > 0 && (back_node_list[i - 1].node_name == "station_in")) {
@@ -1434,6 +1483,7 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
                         gap_action_chip1.done = false;
                         gap_action_chip1.arm_angle = -3.141592653;
                         gap_actions.push_back(gap_action_chip1);
+                        // station_in不是最后一个点时
                     } else if ((i < (back_node_list.size() - 1)) && (back_node_list[i + 1].node_name == "station_in")) {
                         gap_action gap_action_chip1;
                         gap_action_chip1.gap_point = back_node_list[i].position;
@@ -1459,6 +1509,9 @@ void Load_Layout_Data_Node::target_trig_callback(const std_msgs::HeaderConstPtr&
     } else {
     }
 
+    /**
+     * 发布路径点信息
+     */
     if (debug && (gap_actions.size() > 0)) {
         pcl::PointCloud<PointType>::Ptr laserCloud_point(new pcl::PointCloud<PointType>());
         PointType pi;
@@ -1505,6 +1558,7 @@ void Load_Layout_Data_Node::robot_pose_subCallback(const geometry_msgs::Pose msg
     std::pair<double, double> vehicle_pose(msg.position.x, msg.position.y);
     double min_dis = 999.0;
     int min_index = -1;
+    // 查找最近任务点
     for (int i = 0; i < gap_actions.size(); i++) {
         double temp_dis = point_dis(vehicle_pose, gap_actions[i].gap_point);
         if (min_dis > temp_dis) {
@@ -1512,10 +1566,13 @@ void Load_Layout_Data_Node::robot_pose_subCallback(const geometry_msgs::Pose msg
             min_index = i;
         }
     }
+
     std::cout << "action_index: " << action_index << std::endl;
     std::cout << "min_index: " << min_index << std::endl;
+
     if (min_dis < 1.0) {
         std::cout << "to_action: " << gap_actions[min_index].up_down << std::endl;
+
         double stop_dis;
         if (gap_actions[min_index].up_down == 2) {  // down
             double dis_line = disPoint2Line(gap_actions[min_index].gap_point, gap_actions[min_index + 1].gap_point, vehicle_pose);
@@ -1530,17 +1587,19 @@ void Load_Layout_Data_Node::robot_pose_subCallback(const geometry_msgs::Pose msg
         if (gap_actions[min_index].up_down == 2 || gap_actions[min_index].up_down == 1) {
             std_msgs::Header slow_trig;
             slow_trig.stamp = ros::Time::now();
-            slow_trig.frame_id = "slow_trig";
+            slow_trig.frame_id = "slow_trig";  // 减速
             slow_trig.seq = 1;
             pub_slow_trig.publish(slow_trig);
         }
+        // first，laste
         if ((gap_actions[min_index].done == false) && (action_index == -1 ? true : (action_index + 1 == min_index ? true : false))) {
             std::cout << "do_action: " << gap_actions[min_index].up_down << std::endl;
+
             // publish stop trig, and up or down, one time
             std_msgs::Header stop_trig;
             stop_trig.stamp = ros::Time::now();
 
-            if (action_index == gap_actions.size() - 1) {
+            if (action_index == gap_actions.size() - 1) {  // 最后一个点
                 target_finish = true;
             }
 

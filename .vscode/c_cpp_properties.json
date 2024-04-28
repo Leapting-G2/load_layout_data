@@ -68,7 +68,8 @@
                 "/home/lightzhu/catkin_ws/src/velodyne/velodyne_pointcloud/include/**",
                 "/home/lightzhu/leapting/src/navigation/voxel_grid/include/**",
                 "/usr/include/**",
-                "${workspaceFolder}/include"
+                "${workspaceFolder}/include",
+                "/opt/ros/noetic/include"
             ],
             "name": "ROS",
             "intelliSenseMode": "gcc-x64",
