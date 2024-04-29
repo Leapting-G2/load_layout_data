@@ -149,12 +149,12 @@ bool getCrossPoint(PointType l1, PointType l2, std::pair<double, double>& crossP
 std::pair<double, double> GetFootOfPerpendicular(std::pair<double, double> s, double a, double b, double c) {
     std::pair<double, double> retVal;
     if (fabs(b) < 0.000001) {
-        retVal.first = (int)(-1.0 * c / a);
+        retVal.first = (-1.0 * c / a);
         retVal.second = s.second;
         return retVal;
     } else if (fabs(a) < 0.000001) {
         retVal.first = s.first;
-        retVal.second = (int)(-1.0 * c / b);
+        retVal.second = (-1.0 * c / b);
         return retVal;
     } else if (fabs(a * s.first + b * s.second + c) < 0.000001) {
         retVal.first = s.first;
@@ -162,8 +162,8 @@ std::pair<double, double> GetFootOfPerpendicular(std::pair<double, double> s, do
         return retVal;
     } else {
         double tempx = (-1.0) * (a * c + a * b * s.second - b * b * s.first) / (a * a + b * b);
-        retVal.first = (int)(tempx);
-        retVal.second = (int)((-1.0) * (a * tempx + c) / b);
+        retVal.first = tempx;
+        retVal.second = (-1.0) * (a * tempx + c) / b;
         return retVal;
     }
 }
@@ -671,77 +671,147 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
                 }
             }
 
+            std::cout << "global_node: " << std::endl;
+            for (int i = 0; i < global_node_list.size(); i++) {
+                std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
+            }
+
             double a, b, c;
-            get_line(nearst_segline_nodes.position, nearst_road.position, a, b, c);
-
-            std::pair<double, double> start_point =
+            get_line(global_node_list[0].position, global_node_list[1].position, a, b, c);
+            std::pair<double, double> foot_point =
                 GetFootOfPerpendicular(std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), a, b, c);
+            std::cout << "base: " << global_node_list[0].position.first << " " << global_node_list[0].position.second << std::endl;
+            std::cout << "base2: " << global_node_list[1].position.first << " " << global_node_list[1].position.second << std::endl;
+            std::cout << "current: " << curr_robot_pose.position.x << " " << curr_robot_pose.position.y << std::endl;
+            std::cout << "foot: " << foot_point.first << " " << foot_point.second << std::endl;
+            std::cout << "1->2: " << global_node_list[0].node_name << "->" << global_node_list[1].node_name << std::endl;
 
-            global_path.poses[0].pose.position.x = start_point.first;
-            global_path.poses[0].pose.position.y = start_point.second;
+            if (between_line(global_node_list[0].position, global_node_list[1].position,foot_point)) {
+                std::cout << "int the line...." << std::endl;
+                global_path.poses[0].pose.position.x = foot_point.first;
+                global_path.poses[0].pose.position.y = foot_point.second;
+            } else {
+                std::cout << "not int the line...." << std::endl;
+                geometry_msgs::PoseStamped start;
+                start = global_path.poses[0];
+                start.pose.position.x = foot_point.first;
+                start.pose.position.y = foot_point.second;
+                global_path.poses.insert(global_path.poses.begin(), start);
+                global_path.poses[0].pose.position.x = foot_point.first;
+                global_path.poses[0].pose.position.y = foot_point.second;
+            }
 
-            if (debug)
-                for (int i = 0; i < global_node_list.size(); i++) {
-                    std::cout << "i " << i << std::endl;
-                    std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
-                }
         } else {
+            std::cout << "Can not find the path from " << nearst_road.node_name << " to " << nearst_segline_nodes.node_name << std::endl;
             path_init = false;
+            return;
         }
-    } else if ((nearst_road.node_name == "t1") || (nearst_road.node_name == "t6")) {
-        int i;
-        for (i = 0; i < road_nodes.size(); i++) {
-            if (road_nodes[i].node_name == nearst_road.node_name)
-                break;
-        }
-        std::cout << "t1/t6" << std::endl;
-        std::cout << "i: " << i << std::endl;
+    } else {
         double a, b, c;
-        get_line(road_nodes[i].position, road_nodes[i + 1].position, a, b, c);
-        std::pair<double, double> start_point =
+        auto iter =
+            std::find_if(road_nodes.begin(), road_nodes.end(), [&](const auto& node) { return (node.node_name == nearst_segline_nodes.node_name); });
+        if (iter != road_nodes.end())
+            iter = std::next(iter);
+        else
+            iter = std::prev(iter);
+        get_line(nearst_road.position, iter->position, a, b, c);
+        std::pair<double, double> foot_point = GetFootOfPerpendicular(
+            std::pair<double, double>(cleaner_nav_path.poses[0].pose.position.x, cleaner_nav_path.poses[0].pose.position.y), a, b, c);
+
+        get_line(nearst_road.position, foot_point, a, b, c);
+        std::pair<double, double> car_foot_point =
             GetFootOfPerpendicular(std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), a, b, c);
-        geometry_msgs::PoseStamped g_pose_start, g_pose_end;
-        g_pose_start.pose.position.x = start_point.first;
-        g_pose_start.pose.position.y = start_point.second;
-        g_pose_start.pose.position.z = 0;
-        g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
-        g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
-        g_pose_end.pose.position.z = 0;
 
-        double ang_roll, ang_pitch, ang_yaw;
-        get_angle(start_point, nearst_road.position, ang_roll, ang_pitch, ang_yaw);
-        g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-        global_path.poses.push_back(g_pose_start);
-        g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-        global_path.poses.push_back(g_pose_end);
-
-    } else if ((nearst_road.node_name == "t5") || (nearst_road.node_name == "t10")) {
-        int i;
-        for (i = 0; i < road_nodes.size(); i++) {
-            if (road_nodes[i].node_name == nearst_road.node_name)
-                break;
+        if (between_line(car_foot_point, nearst_road.position, foot_point)) {
+            geometry_msgs::PoseStamped g_pose_start, g_pose_end;
+            g_pose_start.pose.position.x = car_foot_point.first;
+            g_pose_start.pose.position.y = car_foot_point.second;
+            g_pose_start.pose.position.z = 0;
+            g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
+            g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
+            g_pose_end.pose.position.z = 0;
+            double ang_roll, ang_pitch, ang_yaw;
+            get_angle(car_foot_point, foot_point, ang_roll, ang_pitch, ang_yaw);
+            g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+            global_path.poses.push_back(g_pose_start);
+            g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+            global_path.poses.push_back(g_pose_end);
+        } else {
+            geometry_msgs::PoseStamped g_pose_start, g_pose_end;
+            g_pose_start.pose.position.x = foot_point.first;
+            g_pose_start.pose.position.y = foot_point.second;
+            g_pose_start.pose.position.z = 0;
+            g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
+            g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
+            g_pose_end.pose.position.z = 0;
+            double ang_roll, ang_pitch, ang_yaw;
+            get_angle(foot_point, nearst_road.position, ang_roll, ang_pitch, ang_yaw);
+            g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+            global_path.poses.push_back(g_pose_start);
+            g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+            global_path.poses.push_back(g_pose_end);
+            g_pose_end.pose.position.x = foot_point.first;
+            g_pose_end.pose.position.y = foot_point.second;
+            global_path.poses.push_back(g_pose_end);
         }
-        std::cout << "t5/t10" << std::endl;
-        std::cout << "i: " << i << std::endl;
-        double a, b, c;
-        get_line(road_nodes[i].position, road_nodes[i - 1].position, a, b, c);
-        std::pair<double, double> start_point =
-            GetFootOfPerpendicular(std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), a, b, c);
-        geometry_msgs::PoseStamped g_pose_start, g_pose_end;
-        g_pose_start.pose.position.x = start_point.first;
-        g_pose_start.pose.position.y = start_point.second;
-        g_pose_start.pose.position.z = 0;
-        g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
-        g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
-        g_pose_end.pose.position.z = 0;
-
-        double ang_roll, ang_pitch, ang_yaw;
-        get_angle(start_point, nearst_road.position, ang_roll, ang_pitch, ang_yaw);
-        g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-        global_path.poses.push_back(g_pose_start);
-        g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
-        global_path.poses.push_back(g_pose_end);
     }
+
+    if (debug)
+        std::cout << "global_node: " << std::endl;
+    for (int i = 0; i < global_node_list.size(); i++) {
+        std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
+    }
+    // } else if ((nearst_road.node_name == "t1") || (nearst_road.node_name == "t6")) {
+    //     int i;
+    //     for (i = 0; i < road_nodes.size(); i++) {
+    //         if (road_nodes[i].node_name == nearst_road.node_name)
+    //             break;
+    //     }
+    //     std::cout << "t1/t6" << std::endl;
+    //     std::cout << "i: " << i << std::endl;
+    //     double a, b, c;
+    //     get_line(road_nodes[i].position, road_nodes[i + 1].position, a, b, c);
+    //     std::pair<double, double> start_point =
+    //         GetFootOfPerpendicular(std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), a, b, c);
+    //     geometry_msgs::PoseStamped g_pose_start, g_pose_end;
+    //     g_pose_start.pose.position.x = start_point.first;
+    //     g_pose_start.pose.position.y = start_point.second;
+    //     g_pose_start.pose.position.z = 0;
+    //     g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
+    //     g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
+    //     g_pose_end.pose.position.z = 0;
+    //     double ang_roll, ang_pitch, ang_yaw;
+    //     get_angle(start_point, nearst_road.position, ang_roll, ang_pitch, ang_yaw);
+    //     g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+    //     global_path.poses.push_back(g_pose_start);
+    //     g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+    //     global_path.poses.push_back(g_pose_end);
+    // } else if ((nearst_road.node_name == "t5") || (nearst_road.node_name == "t10")) {
+    //     int i;
+    //     for (i = 0; i < road_nodes.size(); i++) {
+    //         if (road_nodes[i].node_name == nearst_road.node_name)
+    //             break;
+    //     }
+    //     std::cout << "t5/t10" << std::endl;
+    //     std::cout << "i: " << i << std::endl;
+    //     double a, b, c;
+    //     get_line(road_nodes[i].position, road_nodes[i - 1].position, a, b, c);
+    //     std::pair<double, double> start_point =
+    //         GetFootOfPerpendicular(std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), a, b, c);
+    //     geometry_msgs::PoseStamped g_pose_start, g_pose_end;
+    //     g_pose_start.pose.position.x = start_point.first;
+    //     g_pose_start.pose.position.y = start_point.second;
+    //     g_pose_start.pose.position.z = 0;
+    //     g_pose_end.pose.position.x = cleaner_nav_path.poses[0].pose.position.x;
+    //     g_pose_end.pose.position.y = cleaner_nav_path.poses[0].pose.position.y;
+    //     g_pose_end.pose.position.z = 0;
+    //     double ang_roll, ang_pitch, ang_yaw;
+    //     get_angle(start_point, nearst_road.position, ang_roll, ang_pitch, ang_yaw);
+    //     g_pose_start.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+    //     global_path.poses.push_back(g_pose_start);
+    //     g_pose_end.pose.orientation = get_quaternion(ang_roll, ang_pitch, ang_yaw);
+    //     global_path.poses.push_back(g_pose_end);
+    // }
 
     layout_path_finish = true;
     do_index = 0;
@@ -776,7 +846,7 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
             geometry_msgs::Pose target_pose = path_combine.poses[do_index - 1].pose;
             // std::cout<<"target pose: "<<path_combine.poses[do_index-1].pose<<std::endl;
             // printf("dis: %f\n", geometry_dis(curr_robot_pose, target_pose));
-            if ((geometry_dis(curr_robot_pose, target_pose) < 2.0)) {
+            if ((geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
                 geometry_msgs::Pose target_pose = path_combine.poses[do_index].pose;
                 pub_nav_pose.publish(target_pose);
                 std::cout << "do_index:" << do_index << std::endl;
@@ -861,6 +931,12 @@ void Global_path_node::charge_go_callback(const std_msgs::Header& msg) {
             for (auto iter : global_node_list) {
                 std::cout << "iter.node_name: " << iter.node_name << std::endl;
             }
+
+            
+
+
+
+
 
             nav_msgs::Path charge_path_msg;
             charge_path_msg.header.frame_id = "map";
