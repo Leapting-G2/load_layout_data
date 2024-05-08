@@ -15,3 +15,6 @@ stamp:
   secs: 0
   nsecs: 0
 frame_id: ''" -1
+
+bz_local_planner/BZPlannerROS
+teb_local_planner/TebLocalPlannerROS

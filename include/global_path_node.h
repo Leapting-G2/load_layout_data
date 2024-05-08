@@ -19,6 +19,10 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
+#include "dynamic_reconfigure/server.h"
+#include <dynamic_reconfigure/client.h>
+#include <move_base/MoveBaseConfig.h>
+
 namespace global_path_node {
 
 typedef pcl::PointXYZ PointType;
@@ -35,6 +39,7 @@ class Global_path_node {
     ros::Publisher pub_nav_pose;
     ros::Publisher move_goal;
     ros::Publisher charge_path;
+    ros::Publisher pub_charge_trig;
 
     ros::Subscriber sub_robot_pose;
     ros::Subscriber sub_cleaner_nav_path;

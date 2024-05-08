@@ -12,9 +12,9 @@
     </node>
 
 
-    <arg name="global_path_node" default="1"/>
-    <group if="$(arg global_path_node)" >
-    <!-- <include file="$(find my_launchpad)/launch/layout_nav.launch"/> -->
+    <arg name="global_path_node" default="0 "/>
+    <group if="$(arg global_path_node)">
+        <!-- <include file="$(find my_launchpad)/launch/layout_nav.launch"/> -->
 
         <node pkg="load_layout_data_node" name="robot_pose_remap" type ="robot_pose_remap" output="screen" />
         <node launch-prefix="nice" pkg="rviz" type="rviz" name="global_path_node_rviz" args="-d $(find load_layout_data_node)/rviz_config/global_path_node.rviz" />
