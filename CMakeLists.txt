@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
   dynamic_reconfigure
+  move_base
   
 )
 find_package(yaml-cpp REQUIRED) 

@@ -6,6 +6,9 @@
 #include <iostream>
 #include <string>
 #include "ros/ros.h"
+#include "ros/time.h"
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -45,11 +48,14 @@ class Global_path_node {
     ros::Subscriber sub_cleaner_nav_path;
     ros::Subscriber sub_charge;
 
+    ros::Timer Hz1_timer;
+
    private:
     void init_data();
     void cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr& msg);
     void robot_pose_subCallback(const geometry_msgs::Pose& msg);
     void charge_go_callback(const std_msgs::Header& msg);
+    void Timer1hzCallback(const ros::TimerEvent &);
 };
 }  // namespace global_path_node
 

@@ -8,6 +8,7 @@ bool debug;
 bool path_init = false;
 bool layout_path_finish = false;
 bool charge_path_finish = false;
+bool last_charge_trig;
 int do_index = 0;
 
 /*拓扑点*/
@@ -470,6 +471,7 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
     ros::NodeHandle nh_param("~");
     nh_param.param<bool>("debug", debug, false);
     nh_param.param<std::string>("are_name", are_name, "leapting_site");
+    nh_param.param<bool>("/charge_station", last_charge_trig, true);
     std::string are_head = "/" + are_name;
 
     road_node_pub = nh.advertise<sensor_msgs::PointCloud2>("/road_node", 10, true);
@@ -484,6 +486,8 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
     sub_cleaner_nav_path = nh.subscribe("/cleaner_nav_path", 10, &Global_path_node::cleaner_nav_path_callback, this);
     sub_robot_pose = nh.subscribe("/robot_pose", 10, &Global_path_node::robot_pose_subCallback, this);
     sub_charge = nh.subscribe("/charge_go", 10, &Global_path_node::charge_go_callback, this);
+
+    Hz1_timer = nh.createTimer(ros::Duration(1.0), &Global_path_node::Timer1hzCallback, this);
 
     XmlRpc::XmlRpcValue param_list_are;
     if (nh_param.getParam(are_head + "/node_list", param_list_are) == true) {
@@ -585,7 +589,14 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
     if (msg->poses.size() == 0) {
         global_path.poses.clear();
         path_combine.poses.clear();
+        charge_combine.poses.clear();
+
         layout_path_finish = false;
+        charge_path_finish = false;
+        std::cout << "....................................." << std::endl;
+        std::cout << ".............stop action........................" << std::endl;
+        std::cout << "....................................." << std::endl;
+
         geometry_msgs::PoseStamped g_pose;
         g_pose.header.frame_id = "map";
         pub_target_path.publish(g_pose);
@@ -594,6 +605,7 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
     cleaner_nav_path = *msg;
     global_path.poses.clear();
     layout_path_finish = false;
+    charge_path_finish = false;
     path_combine.poses.clear();
 
     if (debug) {
@@ -775,9 +787,12 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
 
 void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
     curr_robot_pose = msg;
+    static bool arm_trig = false;
 
+    // 全局清洗路径规划
     if ((layout_path_finish) && (!charge_path_finish)) {
-        if (do_index == 0) {
+        if ((do_index == 0) && !last_charge_trig) {  // 库外
+            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
             dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
             move_base::MoveBaseConfig cur_movebase_config;
             client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
@@ -795,22 +810,76 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
             client.setConfiguration(cur_movebase_config);
 
             geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
+            std::cout << "target_pose:" << target_pose << std::endl;
+            pub_nav_pose.publish(target_pose);
+            std::cout << "do_index:" << do_index << std::endl;
+            do_index++;
+
+            std_msgs::Header charge_trig_msg;
+            charge_trig_msg.frame_id = "stop_trig";
+            charge_trig_msg.seq = 1;  // pick
+            pub_charge_trig.publish(charge_trig_msg);
+        } else if ((do_index == 0) && last_charge_trig) {  // 库内
+            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
+            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+            move_base::MoveBaseConfig cur_movebase_config;
+            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+            client.setConfiguration(cur_movebase_config);  //???
+            std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
+            std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
+            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+            // cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+            cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.1);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 2.0);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 2.0);
+            client.setConfiguration(cur_movebase_config);
+
+            geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
+            std::cout << "target_pose:" << target_pose << std::endl;
             pub_nav_pose.publish(target_pose);
             std::cout << "do_index:" << do_index << std::endl;
             do_index++;
         }
 
-        if (do_index > 0) {
-            geometry_msgs::Pose target_pose = path_combine.poses[do_index - 1].pose;
-            // std::cout<<"target pose: "<<path_combine.poses[do_index-1].pose<<std::endl;
-            // printf("dis: %f\n", geometry_dis(curr_robot_pose, target_pose));
-            if ((geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
-                geometry_msgs::Pose target_pose = path_combine.poses[do_index].pose;
-                pub_nav_pose.publish(target_pose);
-                std::cout << "do_index:" << do_index << std::endl;
+        geometry_msgs::Pose target_pose = path_combine.poses[do_index - 1].pose;
+        if ((do_index > 0) && (geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
+            if (last_charge_trig && (do_index > 1)) {
+                dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+                move_base::MoveBaseConfig cur_movebase_config;
+                client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+                client.setConfiguration(cur_movebase_config);  //???
+                std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
+                std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
+                cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+                // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+                // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+                cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+                // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+                ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
+                client.setConfiguration(cur_movebase_config);
 
-                do_index++;
+                std_msgs::Header charge_trig_msg;
+                charge_trig_msg.frame_id = "stop_trig";
+                charge_trig_msg.seq = 1;  // pick
+                for (int i = 0; i < 3; i++) {
+                    pub_charge_trig.publish(charge_trig_msg);
+                    std::cout << "arm action....." << std::endl;
+                    ros::Duration(0.1).sleep();
+                }
+                last_charge_trig = false;
             }
+
+            geometry_msgs::Pose target_pose = path_combine.poses[do_index].pose;
+            std::cout << "target_pose:" << target_pose << std::endl;
+            pub_nav_pose.publish(target_pose);
+            std::cout << "do_index:" << do_index << std::endl;
+            do_index++;
+            // last pose
             if (do_index == global_path.poses.size()) {
                 do_index = -1;
                 layout_path_finish = false;
@@ -819,14 +888,16 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
                 pub_global_path_trig.publish(head);
             }
         }
+
+        // 回库充电路径规划
     } else if ((!layout_path_finish) && (charge_path_finish)) {
         if (do_index == 0) {
             dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
             move_base::MoveBaseConfig cur_movebase_config;
             client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
             client.setConfiguration(cur_movebase_config);  //???
-            // std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-            // std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
+            std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
+            std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
             cur_movebase_config.base_global_planner = "navfn/NavfnROS";
             // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
             // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
@@ -853,12 +924,14 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
                 dis = 0.5;
 
             if (do_index == abs(3 - (int)(charge_combine.poses.size()))) {
+                printf("do_index: %d\n", do_index);
+                printf("do_index size: %ld\n", charge_combine.poses.size());
                 dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
                 move_base::MoveBaseConfig cur_movebase_config;
                 client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
                 client.setConfiguration(cur_movebase_config);  //???
-                // std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-                // std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
+                std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
+                std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
                 cur_movebase_config.base_global_planner = "navfn/NavfnROS";
                 // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
                 // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
@@ -872,7 +945,6 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
             // arm down
 
             geometry_msgs::Pose target_pose = charge_combine.poses[do_index - 1].pose;
-            static bool arm_trig = false;
             if ((do_index == abs(2 - (int)(charge_combine.poses.size()))) && (!arm_trig)) {
                 std_msgs::Header charge_trig_msg;
                 charge_trig_msg.frame_id = "stop_trig";
@@ -884,7 +956,6 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
                 }
                 arm_trig = true;
             }
-
             if ((geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
                 geometry_msgs::Pose target_pose = charge_combine.poses[do_index].pose;
                 pub_nav_pose.publish(target_pose);
@@ -897,6 +968,8 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
                 std_msgs::Header head;
                 head.frame_id = "cleaner";
                 pub_global_path_trig.publish(head);
+                arm_trig = false;
+                last_charge_trig = true;
             }
         }
     }
@@ -904,6 +977,8 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
 
 void Global_path_node::charge_go_callback(const std_msgs::Header& msg) {
     charge_path_finish = false;
+    charge_combine.poses.clear();
+
     nav_msgs::Path charge_path_msg;
     charge_path_msg.header.frame_id = "map";
     charge_path_msg.header.stamp = ros::Time::now();
@@ -1039,6 +1114,16 @@ void Global_path_node::init_data() {
     // dynamic_reconfigure::Server<layout_nav_interface::map_offsetConfig>::CallbackType cb;
     // cb = boost::bind(&configCb, _1, _2);
     // configServer->setCallback(cb);
+}
+
+void Global_path_node::Timer1hzCallback(const ros::TimerEvent&) {
+    // std::cout << "last charge trig: " << last_charge_trig << std::endl;
+    std::string file_path = "/home/lightzhu/leapting/src/leapting/load_layout_data/config/global.yaml";
+    YAML::Node yaml_node = YAML::LoadFile(file_path);
+    ros::param::set("/charge_station", last_charge_trig);
+    yaml_node["charge_station"] = last_charge_trig;
+    std::ofstream fout(file_path);
+    fout << yaml_node;
 }
 
 }  // namespace global_path_node
