@@ -10,6 +10,8 @@ bool layout_path_finish = false;
 bool charge_path_finish = false;
 bool last_charge_trig;
 int do_index = 0;
+bool local_bz = false;
+double extended_dis = 0.0;
 
 /*拓扑点*/
 struct road_node {
@@ -38,8 +40,6 @@ nav_msgs::Path charge_combine;    // 充电路径
 /*------------------------------------------------------------------------------*/
 
 double geometry_dis(geometry_msgs::Pose pos1, geometry_msgs::Pose pos2) {
-    // return sqrt((pos1.position.x - pos2.position.x) * (pos1.position.x - pos2.position.x) + (pos1.position.y - pos2.position.y) * (pos1.position.y
-    // - pos2.position.y) + (pos1.position.z - pos2.position.z) * (pos1.position.z - pos2.position.z));
     return sqrt((pos1.position.x - pos2.position.x) * (pos1.position.x - pos2.position.x) +
                 (pos1.position.y - pos2.position.y) * (pos1.position.y - pos2.position.y));
 }
@@ -181,6 +181,7 @@ bool find_seg(const std::vector<std::pair<std::string, std::string>>& seg_list,
               std::pair<double, double> pb,
               std::pair<road_node, road_node>& seg_line) {
     std::vector<std::pair<road_node, road_node>> closet_node;
+    // 遍历所有seg_list，node_list，查找所有的道路段
     for (int i = 0; i < seg_list.size(); i++) {
         road_node road_node1, road_node2;
         for (int j = 0; j < node_list.size(); j++) {
@@ -191,6 +192,7 @@ bool find_seg(const std::vector<std::pair<std::string, std::string>>& seg_list,
                 road_node2 = node_list[j];  // LA_1,LA_2
             }
         }
+        // 判断pa,pb是否在road_node1,road_node2之间
         if (between_line(road_node1.position, road_node2.position, pa)) {
             closet_node.push_back(std::pair<road_node, road_node>(road_node1, road_node2));
         }
@@ -205,7 +207,7 @@ bool find_seg(const std::vector<std::pair<std::string, std::string>>& seg_list,
         return true;
     } else {
         double a, b, c;
-        get_line(pa, pb, a, b, c);
+        get_line(pa, pb, a, b, c);  // 获取直线方程
         PointType l_ab(a, b, c);
         double min_dis = 9999999999;
         int index = -1;
@@ -465,6 +467,32 @@ int pointPosition(std::pair<double, double> a, std::pair<double, double> b, std:
     }
 }
 
+/**
+ * 计算向量延伸点
+ */
+geometry_msgs::Point computeExtendedPoint(const geometry_msgs::Point& in, const geometry_msgs::Point& out, double distance) {
+    // Calculate the direction vector from in to out
+    double dx = out.x - in.x;
+    double dy = out.y - in.y;
+    double dz = out.z - in.z;
+
+    // Calculate the length of the vector
+    double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+    // Calculate the unit vector components for the direction
+    double unit_x = dx / length;
+    double unit_y = dy / length;
+    double unit_z = dz / length;
+
+    // Calculate the new point by extending along the direction vector
+    geometry_msgs::Point pre;
+    pre.x = out.x + unit_x * distance;
+    pre.y = out.y + unit_y * distance;
+    pre.z = out.z + unit_z * distance;
+
+    return pre;
+}
+
 /*------------------------------------------------------------------------------*/
 
 Global_path_node::Global_path_node(ros::NodeHandle nh) {
@@ -472,6 +500,7 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
     nh_param.param<bool>("debug", debug, false);
     nh_param.param<std::string>("are_name", are_name, "leapting_site");
     nh_param.param<bool>("/charge_station", last_charge_trig, true);
+    nh_param.param<double>("extended_dis", extended_dis, 0.5);
     std::string are_head = "/" + are_name;
 
     road_node_pub = nh.advertise<sensor_msgs::PointCloud2>("/road_node", 10, true);
@@ -504,15 +533,12 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
             road_node road_node_chip;
             std::string node_name = param_list_are[i]["node_name"];
             road_node_chip.node_name = node_name;  // t1,t2,,,,,tn
-
             road_node_chip.position.first = param_list_are[i]["param"][0];
             road_node_chip.position.second = param_list_are[i]["param"][1];
 
             // 查询连接点
-
             for (int k = 2; k < param_list_are[i]["param"].size(); k++) {
                 std::string connect_node_name = param_list_are[i]["param"][k];
-
                 for (auto iter = temp_map.begin(); iter != temp_map.end(); iter++) {
                     if (iter->first == connect_node_name) {
                         road_node_chip.connect_list.push_back(iter->first);                                            // name
@@ -526,7 +552,13 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
             }
             road_nodes.push_back(road_node_chip);  // t1,t2,t3,t4,t5
         }
+        std::pair<std::string, std::string> segline_name_chip("pre", "T3");
+        segline_names.push_back(segline_name_chip);
+        segline_name_chip.second = "T4";
+        segline_names.push_back(segline_name_chip);
 
+        /**station*/
+        std::cout << "station................." << std::endl;
         if (nh_param.getParam(are_head + "/station", param_list_are) == true) {
             for (int i = 0; i < param_list_are.size(); i++) {
                 std::string node_name = param_list_are[i]["node_name"];
@@ -534,13 +566,29 @@ Global_path_node::Global_path_node(ros::NodeHandle nh) {
                 std::pair<std::string, std::pair<double, double>> temp_map_chip(node_name, temp_pos);
                 temp_map.insert(temp_map_chip);
             }
-            // int j = 0;
             for (int i = 0; i < (int)param_list_are.size(); i++) {
                 road_node road_node_chip;
                 std::string node_name = param_list_are[i]["node_name"];
                 road_node_chip.node_name = node_name;
-                road_node_chip.position.first = param_list_are[i]["param"][0];
-                road_node_chip.position.second = param_list_are[i]["param"][1];
+                if (node_name == "pre") {
+                    geometry_msgs::Point in, out;
+                    in.x = temp_map["in"].first;
+                    in.y = temp_map["in"].second;
+                    in.z = 0.0;
+                    out.x = temp_map["out"].first;
+                    out.y = temp_map["out"].second;
+                    out.z = 0.0;
+                    geometry_msgs::Point pre_point = computeExtendedPoint(in, out, extended_dis);
+                    road_node_chip.position.first = pre_point.x;
+                    road_node_chip.position.second = pre_point.y;
+                    temp_map["pre"].first = pre_point.x;
+                    temp_map["pre"].second = pre_point.y;
+
+                } else {
+                    road_node_chip.position.first = param_list_are[i]["param"][0];
+                    road_node_chip.position.second = param_list_are[i]["param"][1];
+                }
+
                 for (int k = 2; k < param_list_are[i]["param"].size(); k++) {
                     std::string connect_node_name = param_list_are[i]["param"][k];
                     for (auto iter = temp_map.begin(); iter != temp_map.end(); iter++) {
@@ -641,7 +689,7 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
         point_dis(turn_seg.first.position, std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y)) <
                 point_dis(turn_seg.second.position, std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y))
             ? turn_seg.first
-            : turn_seg.second;  // t3
+            : turn_seg.second;
 
     // 查询最近的拓扑点
     double min_dis = 9999999;
@@ -661,7 +709,6 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
         return;
     }
 
-    // t3,t4,t5
     if (nearst_road.node_name != nearst_segline_nodes.node_name) {
         if (find_path(nearst_road, nearst_segline_nodes, global_node_list)) {
             for (int i = 0; i < global_node_list.size() - 1; i++) {
@@ -768,10 +815,11 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
         }
     }
 
-    if (debug)
+    if (debug) {
         std::cout << "global_node: " << std::endl;
-    for (int i = 0; i < global_node_list.size(); i++) {
-        std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
+        for (int i = 0; i < global_node_list.size(); i++) {
+            std::cout << "global_node_list[i].node_name " << global_node_list[i].node_name << std::endl;
+        }
     }
 
     layout_path_finish = true;
@@ -783,196 +831,6 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
         path_combine.poses.push_back(global_path.poses[i]);
     }
     pub_target_path.publish(path_combine);
-}
-
-void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
-    curr_robot_pose = msg;
-    static bool arm_trig = false;
-
-    // 全局清洗路径规划
-    if ((layout_path_finish) && (!charge_path_finish)) {
-        if ((do_index == 0) && !last_charge_trig) {  // 库外
-            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
-            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
-            move_base::MoveBaseConfig cur_movebase_config;
-            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
-            client.setConfiguration(cur_movebase_config);  //???
-            std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-            std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
-            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
-            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
-            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
-            cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
-            // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
-            ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
-            ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
-            client.setConfiguration(cur_movebase_config);
-
-            geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
-            std::cout << "target_pose:" << target_pose << std::endl;
-            pub_nav_pose.publish(target_pose);
-            std::cout << "do_index:" << do_index << std::endl;
-            do_index++;
-
-            std_msgs::Header charge_trig_msg;
-            charge_trig_msg.frame_id = "stop_trig";
-            charge_trig_msg.seq = 1;  // pick
-            pub_charge_trig.publish(charge_trig_msg);
-        } else if ((do_index == 0) && last_charge_trig) {  // 库内
-            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
-            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
-            move_base::MoveBaseConfig cur_movebase_config;
-            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
-            client.setConfiguration(cur_movebase_config);  //???
-            std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-            std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
-            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
-            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
-            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
-            // cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
-            cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.1);
-            ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 2.0);
-            ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 2.0);
-            client.setConfiguration(cur_movebase_config);
-
-            geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
-            std::cout << "target_pose:" << target_pose << std::endl;
-            pub_nav_pose.publish(target_pose);
-            std::cout << "do_index:" << do_index << std::endl;
-            do_index++;
-        }
-
-        geometry_msgs::Pose target_pose = path_combine.poses[do_index - 1].pose;
-        if ((do_index > 0) && (geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
-            if (last_charge_trig && (do_index > 1)) {
-                dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
-                move_base::MoveBaseConfig cur_movebase_config;
-                client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
-                client.setConfiguration(cur_movebase_config);  //???
-                std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-                std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
-                cur_movebase_config.base_global_planner = "navfn/NavfnROS";
-                // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
-                // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
-                cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
-                // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-                ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
-                ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
-                ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
-                client.setConfiguration(cur_movebase_config);
-
-                std_msgs::Header charge_trig_msg;
-                charge_trig_msg.frame_id = "stop_trig";
-                charge_trig_msg.seq = 1;  // pick
-                for (int i = 0; i < 3; i++) {
-                    pub_charge_trig.publish(charge_trig_msg);
-                    std::cout << "arm action....." << std::endl;
-                    ros::Duration(0.1).sleep();
-                }
-                last_charge_trig = false;
-            }
-
-            geometry_msgs::Pose target_pose = path_combine.poses[do_index].pose;
-            std::cout << "target_pose:" << target_pose << std::endl;
-            pub_nav_pose.publish(target_pose);
-            std::cout << "do_index:" << do_index << std::endl;
-            do_index++;
-            // last pose
-            if (do_index == global_path.poses.size()) {
-                do_index = -1;
-                layout_path_finish = false;
-                std_msgs::Header head;
-                head.frame_id = "cleaner";
-                pub_global_path_trig.publish(head);
-            }
-        }
-
-        // 回库充电路径规划
-    } else if ((!layout_path_finish) && (charge_path_finish)) {
-        if (do_index == 0) {
-            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
-            move_base::MoveBaseConfig cur_movebase_config;
-            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
-            client.setConfiguration(cur_movebase_config);  //???
-            std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-            std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
-            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
-            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
-            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
-            cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
-            // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-            client.setConfiguration(cur_movebase_config);
-
-            geometry_msgs::Pose target_pose = charge_combine.poses[0].pose;
-            pub_nav_pose.publish(target_pose);
-            std::cout << "do_index:" << do_index << std::endl;
-            do_index++;
-
-            std_msgs::Header charge_trig_msg;
-            charge_trig_msg.frame_id = "stop_trig";
-            charge_trig_msg.seq = 1;  // pick
-            pub_charge_trig.publish(charge_trig_msg);
-        }
-
-        if (do_index > 0) {
-            float dis = 0.5;
-            if (do_index == 1)
-                dis = 1.5;
-            else
-                dis = 0.5;
-
-            if (do_index == abs(3 - (int)(charge_combine.poses.size()))) {
-                printf("do_index: %d\n", do_index);
-                printf("do_index size: %ld\n", charge_combine.poses.size());
-                dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
-                move_base::MoveBaseConfig cur_movebase_config;
-                client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
-                client.setConfiguration(cur_movebase_config);  //???
-                std::cout << "cur_movebase_config.base_global_planner: " << cur_movebase_config.base_global_planner << std::endl;
-                std::cout << "cur_movebase_config.base_local_planner: " << cur_movebase_config.base_local_planner << std::endl;
-                cur_movebase_config.base_global_planner = "navfn/NavfnROS";
-                // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
-                // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
-                // cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
-                cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-                ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.1);
-                ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 2);
-                ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 2);
-                client.setConfiguration(cur_movebase_config);
-            }
-            // arm down
-
-            geometry_msgs::Pose target_pose = charge_combine.poses[do_index - 1].pose;
-            if ((do_index == abs(2 - (int)(charge_combine.poses.size()))) && (!arm_trig)) {
-                std_msgs::Header charge_trig_msg;
-                charge_trig_msg.frame_id = "stop_trig";
-                charge_trig_msg.seq = 2;  // pick
-                for (int i = 0; i < 3; i++) {
-                    pub_charge_trig.publish(charge_trig_msg);
-                    std::cout << "arm action....." << std::endl;
-                    ros::Duration(0.1).sleep();
-                }
-                arm_trig = true;
-            }
-            if ((geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
-                geometry_msgs::Pose target_pose = charge_combine.poses[do_index].pose;
-                pub_nav_pose.publish(target_pose);
-                std::cout << "do_index:" << do_index << std::endl;
-                do_index++;
-            }
-            if (do_index == charge_combine.poses.size()) {
-                do_index = -1;
-                charge_path_finish = false;
-                std_msgs::Header head;
-                head.frame_id = "cleaner";
-                pub_global_path_trig.publish(head);
-                arm_trig = false;
-                last_charge_trig = true;
-            }
-        }
-    }
 }
 
 void Global_path_node::charge_go_callback(const std_msgs::Header& msg) {
@@ -1013,6 +871,7 @@ void Global_path_node::charge_go_callback(const std_msgs::Header& msg) {
     }
     std::cout << "out node: " << road_nodes[out_index].node_name << std::endl;
     std::cout << "nearst node: " << road_nodes[index].node_name << std::endl;
+
     if (index != -1) {
         if (find_path(road_nodes[index], road_nodes[out_index], global_node_list)) {
             std::cout << "befor..." << std::endl;
@@ -1105,6 +964,190 @@ void Global_path_node::charge_go_callback(const std_msgs::Header& msg) {
         charge_combine.header.stamp = ros::Time::now();
         charge_path_finish = true;
         do_index = 0;
+    }
+}
+
+void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
+    curr_robot_pose = msg;
+    static bool arm_trig = false;
+
+    // 全局清洗路径规划
+    if ((layout_path_finish) && (!charge_path_finish)) {
+        if ((do_index == 0) && !last_charge_trig) {  // 库外
+            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
+            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+            move_base::MoveBaseConfig cur_movebase_config;
+            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+            client.setConfiguration(cur_movebase_config);  //???
+            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+            cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+            // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
+            client.setConfiguration(cur_movebase_config);
+            std::cout << "local_planner: teb_local_planner" << std::endl;
+
+            geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
+            std::cout << "do_index:" << do_index << std::endl;
+            std::cout << "target_pose:" << target_pose << std::endl;
+            pub_nav_pose.publish(target_pose);
+            do_index = do_index + 1;
+
+            std_msgs::Header charge_trig_msg;
+            charge_trig_msg.frame_id = "stop_trig";
+            charge_trig_msg.seq = 1;  // pick
+            pub_charge_trig.publish(charge_trig_msg);
+        } else if ((do_index == 0) && last_charge_trig) {  // 库内
+            std::cout << "las_charge_trig: " << last_charge_trig << std::endl;
+            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+            move_base::MoveBaseConfig cur_movebase_config;
+            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+            client.setConfiguration(cur_movebase_config);  //???
+            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+            // cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+            cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.1);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 2.0);
+            ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 2.0);
+            client.setConfiguration(cur_movebase_config);
+            std::cout << "local_planner: bz_local_planner" << std::endl;
+
+            geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
+            std::cout << "do_index:" << do_index << std::endl;
+            std::cout << "target_pose:" << target_pose << std::endl;
+            pub_nav_pose.publish(target_pose);
+            do_index = do_index + 1;
+        }
+
+        geometry_msgs::Pose target_pose = path_combine.poses[do_index - 1].pose;
+        if ((do_index > 0) && (geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
+            if (last_charge_trig && (geometry_dis(curr_robot_pose, path_combine.poses[0].pose) > 5.0)) {  // 出库
+                dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+                move_base::MoveBaseConfig cur_movebase_config;
+                client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+                client.setConfiguration(cur_movebase_config);  //???
+                cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+                // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+                // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+                cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+                // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+                ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
+                client.setConfiguration(cur_movebase_config);
+                std::cout << "local_planner: teb_local_planner" << std::endl;
+
+                std_msgs::Header charge_trig_msg;
+                charge_trig_msg.frame_id = "stop_trig";
+                charge_trig_msg.seq = 1;  // pick
+                for (int i = 0; i < 3; i++) {
+                    pub_charge_trig.publish(charge_trig_msg);
+                    std::cout << "arm action....." << std::endl;
+                    ros::Duration(0.1).sleep();
+                }
+                last_charge_trig = false;
+            }
+
+            geometry_msgs::Pose target_pose = path_combine.poses[do_index].pose;
+            std::cout << "do_index:" << do_index << std::endl;
+            std::cout << "target_pose:" << target_pose << std::endl;
+            pub_nav_pose.publish(target_pose);
+
+            do_index = do_index + 1;
+            // last pose
+            if (do_index == global_path.poses.size()) {
+                do_index = -1;
+                layout_path_finish = false;
+                std_msgs::Header head;
+                head.frame_id = "cleaner";
+                pub_global_path_trig.publish(head);
+            }
+        }
+
+        // 回库充电路径规划
+    } else if ((!layout_path_finish) && (charge_path_finish)) {
+        if (do_index == 0) {
+            dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+            move_base::MoveBaseConfig cur_movebase_config;
+            client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+            client.setConfiguration(cur_movebase_config);  //???
+            cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+            // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+            // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+            cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+            // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+            client.setConfiguration(cur_movebase_config);
+            std::cout << "local_planner: teb_local_planner" << std::endl;
+
+            local_bz = false;
+
+            geometry_msgs::Pose target_pose = charge_combine.poses[0].pose;
+            pub_nav_pose.publish(target_pose);
+            std::cout << "do_index size:" << charge_combine.poses.size() << std::endl;
+            std::cout << "do_index:" << do_index << std::endl;
+            do_index = do_index + 1;
+
+            std_msgs::Header charge_trig_msg;
+            charge_trig_msg.frame_id = "stop_trig";
+            charge_trig_msg.seq = 1;  // pick
+            pub_charge_trig.publish(charge_trig_msg);
+        }
+
+        if (do_index > 0) {
+            if ((do_index == abs(3 - (int)(charge_combine.poses.size()))) && (!local_bz)) {
+                printf("do_index: %d\n", do_index);
+                printf("do_index size: %ld\n", charge_combine.poses.size());
+                dynamic_reconfigure::Client<move_base::MoveBaseConfig> client("/move_base");
+                move_base::MoveBaseConfig cur_movebase_config;
+                client.getCurrentConfiguration(cur_movebase_config, ros::Duration(0.5));
+                client.setConfiguration(cur_movebase_config);  //???
+                cur_movebase_config.base_global_planner = "navfn/NavfnROS";
+                // cur_movebase_config.base_global_planner = "global_planner/MixedPlanner";
+                // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
+                // cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
+                cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
+                ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.1);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 2);
+                ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 2);
+                client.setConfiguration(cur_movebase_config);
+                std::cout << "local_planner: bz_local_planner" << std::endl;
+                local_bz = true;
+            }
+            // arm down
+
+            geometry_msgs::Pose target_pose = charge_combine.poses[do_index - 1].pose;
+            if ((do_index == abs(2 - (int)(charge_combine.poses.size()))) && (!arm_trig)) {
+                std_msgs::Header charge_trig_msg;
+                charge_trig_msg.frame_id = "stop_trig";
+                charge_trig_msg.seq = 2;  // place
+                for (int i = 0; i < 3; i++) {
+                    pub_charge_trig.publish(charge_trig_msg);
+                    std::cout << "arm action....." << std::endl;
+                    ros::Duration(0.1).sleep();
+                }
+                arm_trig = true;
+            }
+            if ((geometry_dis(curr_robot_pose, target_pose) < 0.5)) {
+                geometry_msgs::Pose target_pose = charge_combine.poses[do_index].pose;
+                pub_nav_pose.publish(target_pose);
+                std::cout << "do_index:" << do_index << std::endl;
+                do_index = do_index + 1;
+            }
+            if (do_index == charge_combine.poses.size()) {
+                do_index = -1;
+                charge_path_finish = false;
+                std_msgs::Header head;
+                head.frame_id = "cleaner";
+                pub_global_path_trig.publish(head);
+                arm_trig = false;
+                last_charge_trig = true;
+            }
+        }
     }
 }
 
