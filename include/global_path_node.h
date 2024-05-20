@@ -55,7 +55,7 @@ class Global_path_node {
     void cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr& msg);
     void robot_pose_subCallback(const geometry_msgs::Pose& msg);
     void charge_go_callback(const std_msgs::Header& msg);
-    void Timer1hzCallback(const ros::TimerEvent &);
+    // void Timer1hzCallback(const ros::TimerEvent &);
 };
 }  // namespace global_path_node
 

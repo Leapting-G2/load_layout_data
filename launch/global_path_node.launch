@@ -7,13 +7,13 @@
         <rosparam subst_value="true">
           debug: true
           are_name: are_leapting
-          extended_dis: 0.5
+          extended_dis: 1.5
 
         </rosparam>
     </node>
 
 
-    <arg name="global_path_node" default="1 "/>
+    <arg name="global_path_node" default="0 "/>
     <group if="$(arg global_path_node)">
         <include file="$(find my_launchpad)/launch/layout_nav.launch"/>
 
