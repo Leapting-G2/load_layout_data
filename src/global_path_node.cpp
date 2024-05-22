@@ -712,7 +712,7 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
     path_combine.poses.clear();
 
     last_charge_trig = isPointInRectangle(std::pair<double, double>(road_nodes[out].position.first, road_nodes[out].position.second),
-                                          std::pair<double, double>(road_nodes[in].position.first, road_nodes[in].position.second),
+                                          std::pair<double, double>(road_nodes[in].position.first-1.0, road_nodes[in].position.second),
                                           std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y), 1.5);
     if (last_charge_trig)
         std::cout << "库内" << std::endl;
@@ -753,6 +753,7 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
                 point_dis(turn_seg.second.position, std::pair<double, double>(curr_robot_pose.position.x, curr_robot_pose.position.y))
             ? turn_seg.first
             : turn_seg.second;
+    std::cout<<"nearst_segline_nodes: "<<nearst_segline_nodes.node_name<<std::endl;
 
     // 查询最近的拓扑点
     double min_dis = 9999999;
@@ -766,6 +767,7 @@ void Global_path_node::cleaner_nav_path_callback(const nav_msgs::Path::ConstPtr&
     }
     if (index != -1) {
         nearst_road = road_nodes[index];
+        std::cout<<"nearst_road: "<<nearst_road.node_name<<std::endl;
     } else {
         std::cout << "Can not find the nearest node" << std::endl;
         path_init = false;
@@ -1044,12 +1046,12 @@ void Global_path_node::robot_pose_subCallback(const geometry_msgs::Pose& msg) {
             // cur_movebase_config.base_global_planner = "global_planner/FixedGlobalPlanner";
             cur_movebase_config.base_local_planner = "teb_local_planner/TebLocalPlannerROS";
             // cur_movebase_config.base_local_planner = "bz_local_planner/BZPlannerROS";
-            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.3);
+            ros::param::set("/move_base/BZPlannerROS/max_vel_x", 0.35); 
             ros::param::set("/move_base/BZPlannerROS/x_offset_pos", 5.0);
             ros::param::set("/move_base/BZPlannerROS/x_offset_neg", 5.0);
             client.setConfiguration(cur_movebase_config);
-            std::cout << "local_planner: teb_local_planner" << std::endl;
-
+            std::cout << "local_planner: teb_local_planner" << std::endl; 
+  
             geometry_msgs::Pose target_pose = path_combine.poses[0].pose;
             std::cout << "do_index:" << do_index << std::endl;
             std::cout << "target_pose:" << target_pose << std::endl;

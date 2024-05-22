@@ -13,7 +13,7 @@
     </node>
 
 
-    <arg name="global_path_node" default="0 "/>
+    <arg name="global_path_node" default="1 "/>
     <group if="$(arg global_path_node)">
         <include file="$(find my_launchpad)/launch/layout_nav.launch"/>
 
