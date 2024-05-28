@@ -16,5 +16,48 @@ stamp:
   nsecs: 0
 frame_id: ''" -1
 
+---
+rostopic pub /cleaner_nav_path nav_msgs/Path "header:
+  seq: 2
+  stamp:
+    secs: 1715910599
+    nsecs: 358308343
+  frame_id: 'map'
+poses:
+- header:
+    seq: 0
+    stamp:
+      secs: 0
+      nsecs: 0
+    frame_id: ''
+  pose:
+    position: 
+      x: 47.469913482666016
+      y: 7.432101726531982
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.6936933807403074
+      w: 0.7202704308223981
+- header:
+    seq: 0
+    stamp:
+      secs: 0
+      nsecs: 0
+    frame_id: ''
+  pose:
+    position: 
+      x: 48.66627883911133
+      y: 12.288253784179688
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.011848144545657338
+      w: 0.9999298082719733" -1
+---
+
+
 bz_local_planner/BZPlannerROS
 teb_local_planner/TebLocalPlannerROS
